@@ -2,6 +2,20 @@ function trimTrailingSlashes(value) {
   return String(value).replace(/\/+$/, "");
 }
 
+const YTIMG_SUBDOMAINS = [
+  "i",
+  "i0",
+  "i1",
+  "i2",
+  "i3",
+  "i4",
+  "i5",
+  "i6",
+  "i7",
+  "i8",
+  "i9",
+];
+
 function buildShadowrocketModule(backendUrl) {
   const normalizedBackendUrl = trimTrailingSlashes(backendUrl);
   const backendHost = new URL(normalizedBackendUrl).hostname;
@@ -11,18 +25,23 @@ function buildShadowrocketModule(backendUrl) {
     directRules.push(`IP-CIDR,${backendHost}/32,DIRECT,no-resolve`);
   }
 
-  return `#!name=ytimg response replace
-#!desc=Replace i.ytimg.com image response body with processed image from ${normalizedBackendUrl}
+  const rewriteRules = YTIMG_SUBDOMAINS.map(
+    (sub) => `^https:\\/\\/${sub}\\.ytimg\\.com\\/(.*)$ ${normalizedBackendUrl}/$1 header`
+  ).join("\n");
+
+  const mitmHosts = YTIMG_SUBDOMAINS.map((sub) => `${sub}.ytimg.com`).join(", ");
+
+  return `#!name=ytimg rewrite to ${backendHost}
+#!desc=Rewrite i*.ytimg.com image requests to ${normalizedBackendUrl} (header mode)
 
 [Rule]
 ${directRules.join("\n")}
 
-[Script]
-ytimg_replace = type=http-response,pattern=^https:\\/\\/(?:i\\d*\\.ytimg\\.com|i\\.ytimg\\.com)\\/.*\\.(?:jpg|jpeg|png|webp)(?:\\?.*)?$,requires-body=true,binary-body-mode=1,max-size=-1,timeout=30,engine=webview,script-path=${normalizedBackendUrl}/ytimg-replace.js
+[URL Rewrite]
+${rewriteRules}
 
 [MITM]
-hostname = %APPEND%, i.ytimg.com, i0.ytimg.com, i1.ytimg.com, i2.ytimg.com, i3.ytimg.com, i4.ytimg.com, i5.ytimg.com, i6.ytimg.com, i7.ytimg.com, i8.ytimg.com, i9.ytimg.com
-h2 = true
+hostname = %APPEND%, ${mitmHosts}
 `;
 }
 

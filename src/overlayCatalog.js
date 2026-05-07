@@ -105,7 +105,12 @@ function rememberSelection(catalog, index) {
   }
 }
 
-function pickOverlayIndex(catalog) {
+function pickOverlayIndex(catalog, randomFn) {
+  if (randomFn) {
+    const pool = catalog.overlayIndices;
+    return pool[Math.floor(randomFn() * pool.length)];
+  }
+
   const eligibleIndices =
     catalog.recentIndices.length === 0
       ? catalog.overlayIndices
@@ -119,9 +124,10 @@ function pickOverlayIndex(catalog) {
   return chosenIndex;
 }
 
-function resolveOverlaySelection(catalog, flipChance) {
-  const index = pickOverlayIndex(catalog);
-  let flip = Math.random() < flipChance;
+function resolveOverlaySelection(catalog, flipChance, randomFn) {
+  const random = randomFn || Math.random;
+  const index = pickOverlayIndex(catalog, randomFn);
+  let flip = random() < flipChance;
   let relativePath = `${index}.png`;
 
   if (flip && catalog.flipBlacklist.has(index)) {

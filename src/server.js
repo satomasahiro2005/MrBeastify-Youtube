@@ -25,6 +25,29 @@ function createHttpError(status, message) {
   return error;
 }
 
+function hashStringToUint32(input) {
+  let hash = 2166136261;
+
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function createSeededRandom(seedString) {
+  let state = hashStringToUint32(seedString) >>> 0;
+
+  return function next() {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function isAllowedThumbnailHost(hostname) {
   return YTIMG_HOST_PATTERN.test(hostname);
 }
@@ -182,7 +205,8 @@ async function buildMrBeastifiedThumbnail({
   const { thumbnailBuffer, sourceContentType } = await fetchThumbnailBuffer(
     thumbnailUrl.toString()
   );
-  const shouldApplyOverlay = Math.random() < appearChance;
+  const seededRandom = createSeededRandom(thumbnailUrl.toString());
+  const shouldApplyOverlay = seededRandom() < appearChance;
 
   if (!shouldApplyOverlay) {
     const passthroughImage = requestedFormat
@@ -206,7 +230,7 @@ async function buildMrBeastifiedThumbnail({
     };
   }
 
-  const overlaySelection = resolveOverlaySelection(overlayCatalog, flipChance);
+  const overlaySelection = resolveOverlaySelection(overlayCatalog, flipChance, seededRandom);
   const transformedImage = await renderThumbnailWithOverlay({
     sourceBuffer: thumbnailBuffer,
     sourceContentType,
@@ -244,6 +268,7 @@ async function respondWithMrBeastifiedThumbnail({
   response.set("Cache-Control", "no-store");
   response.set("X-MrBeastify-Source", image.sourceUrl);
   response.set("Content-Type", image.contentType);
+  response.set("Content-Length", String(image.buffer.length));
   response.set("X-MrBeastify-Applied", String(image.applied));
 
   if (image.overlayIndex !== null) {
@@ -251,7 +276,7 @@ async function respondWithMrBeastifiedThumbnail({
     response.set("X-MrBeastify-Flipped", String(image.flipped));
   }
 
-  response.send(image.buffer);
+  response.status(200).end(image.buffer);
 }
 
 async function main() {
