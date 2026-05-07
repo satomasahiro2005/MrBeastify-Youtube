@@ -8,6 +8,7 @@ const {
   normalizeRequestedFormat,
   renderThumbnailWithOverlay,
 } = require("./thumbnailService");
+const { buildShadowrocketScript } = require("./shadowrocketScript");
 
 const DEFAULT_APPEAR_CHANCE = 1;
 const DEFAULT_FLIP_CHANCE = 0.25;
@@ -151,21 +152,36 @@ function buildUpstreamUrlFromPathRequest(request) {
   return upstreamUrl;
 }
 
-async function respondWithMrBeastifiedThumbnail({
+function getRequestOrigin(request) {
+  const forwardedProtocol = request.get("x-forwarded-proto");
+  const forwardedHost = request.get("x-forwarded-host");
+  const protocol = forwardedProtocol ? forwardedProtocol.split(",")[0].trim() : request.protocol;
+  const host = forwardedHost ? forwardedHost.split(",")[0].trim() : request.get("host");
+
+  return `${protocol}://${host}`;
+}
+
+function getShadowrocketBackendUrl(request) {
+  const configuredBackendUrl = process.env.SHADOWROCKET_BACKEND_URL;
+
+  if (configuredBackendUrl) {
+    return configuredBackendUrl.replace(/\/+$/, "");
+  }
+
+  return getRequestOrigin(request).replace(/\/+$/, "");
+}
+
+async function buildMrBeastifiedThumbnail({
   thumbnailUrl,
   appearChance,
   flipChance,
   requestedFormat,
   overlayCatalog,
-  response,
 }) {
   const { thumbnailBuffer, sourceContentType } = await fetchThumbnailBuffer(
     thumbnailUrl.toString()
   );
   const shouldApplyOverlay = Math.random() < appearChance;
-
-  response.set("Cache-Control", "no-store");
-  response.set("X-MrBeastify-Source", thumbnailUrl.toString());
 
   if (!shouldApplyOverlay) {
     const passthroughImage = requestedFormat
@@ -179,10 +195,14 @@ async function respondWithMrBeastifiedThumbnail({
           contentType: sourceContentType.split(";")[0] || "application/octet-stream",
         };
 
-    response.set("Content-Type", passthroughImage.contentType);
-    response.set("X-MrBeastify-Applied", "false");
-    response.send(passthroughImage.buffer);
-    return;
+    return {
+      buffer: passthroughImage.buffer,
+      contentType: passthroughImage.contentType,
+      applied: false,
+      flipped: false,
+      overlayIndex: null,
+      sourceUrl: thumbnailUrl.toString(),
+    };
   }
 
   const overlaySelection = resolveOverlaySelection(overlayCatalog, flipChance);
@@ -194,11 +214,43 @@ async function respondWithMrBeastifiedThumbnail({
     flip: overlaySelection.flip,
   });
 
-  response.set("Content-Type", transformedImage.contentType);
-  response.set("X-MrBeastify-Applied", "true");
-  response.set("X-MrBeastify-Overlay-Index", String(overlaySelection.index));
-  response.set("X-MrBeastify-Flipped", String(overlaySelection.flip));
-  response.send(transformedImage.buffer);
+  return {
+    buffer: transformedImage.buffer,
+    contentType: transformedImage.contentType,
+    applied: true,
+    flipped: overlaySelection.flip,
+    overlayIndex: overlaySelection.index,
+    sourceUrl: thumbnailUrl.toString(),
+  };
+}
+
+async function respondWithMrBeastifiedThumbnail({
+  thumbnailUrl,
+  appearChance,
+  flipChance,
+  requestedFormat,
+  overlayCatalog,
+  response,
+}) {
+  const image = await buildMrBeastifiedThumbnail({
+    thumbnailUrl,
+    appearChance,
+    flipChance,
+    requestedFormat,
+    overlayCatalog,
+  });
+
+  response.set("Cache-Control", "no-store");
+  response.set("X-MrBeastify-Source", image.sourceUrl);
+  response.set("Content-Type", image.contentType);
+  response.set("X-MrBeastify-Applied", String(image.applied));
+
+  if (image.overlayIndex !== null) {
+    response.set("X-MrBeastify-Overlay-Index", String(image.overlayIndex));
+    response.set("X-MrBeastify-Flipped", String(image.flipped));
+  }
+
+  response.send(image.buffer);
 }
 
 async function main() {
@@ -223,6 +275,8 @@ async function main() {
         hostReplacement:
           "/vi/<VIDEO_ID>/hq720.jpg?sqp=...&rs=...  (replace i.ytimg.com with this server)",
         queryProxy: "/mrbeastify?url=https://i.ytimg.com/vi/<VIDEO_ID>/hqdefault.jpg",
+        shadowrocketScript: "/ytimg-replace.js",
+        shadowrocketApi: "/__ytimg_replace?url=https://i.ytimg.com/vi/<VIDEO_ID>/hq720.jpg",
       },
       optionalQuery: {
         appearChance: "0.0 - 1.0",
@@ -237,6 +291,48 @@ async function main() {
       ok: true,
       overlays: overlayCatalog.overlayIndices.length,
     });
+  });
+
+  app.get("/ytimg-replace.js", (request, response) => {
+    response.type("application/javascript");
+    response.set("Cache-Control", "no-store");
+    response.send(buildShadowrocketScript(getShadowrocketBackendUrl(request)));
+  });
+
+  app.get("/__ytimg_replace", async (request, response, next) => {
+    try {
+      const thumbnailUrl = parseThumbnailUrl(request.query.url);
+      const appearChance = parseProbability(
+        request.query.appearChance,
+        DEFAULT_APPEAR_CHANCE,
+        "appearChance"
+      );
+      const flipChance = parseProbability(
+        request.query.flipChance,
+        DEFAULT_FLIP_CHANCE,
+        "flipChance"
+      );
+      const requestedFormat = parseRequestedFormat(request.query.format);
+      const image = await buildMrBeastifiedThumbnail({
+        thumbnailUrl,
+        appearChance,
+        flipChance,
+        requestedFormat,
+        overlayCatalog,
+      });
+
+      response.set("Cache-Control", "no-store");
+      response.json({
+        mime: image.contentType,
+        base64: image.buffer.toString("base64"),
+        applied: image.applied,
+        overlayIndex: image.overlayIndex,
+        flipped: image.flipped,
+        sourceUrl: image.sourceUrl,
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/mrbeastify", async (request, response, next) => {
