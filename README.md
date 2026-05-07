@@ -1,62 +1,79 @@
-<div align = center>
+# MrBeastify Thumbnail Server
 
-# MrBeastify
+Forked from [MagicJinn/MrBeastify-Youtube](https://github.com/MagicJinn/MrBeastify-Youtube).
 
-Is your browser experience boring? Are you having  
-trouble finding engaging click-baity videos?
+This version is no longer a browser extension. It is an HTTP server that:
 
-**Fear no more.**
+- fetches a thumbnail from `ytimg.com`
+- overlays a random MrBeast asset from `images/`
+- returns the transformed image to the caller
 
-This extension adds the famous  
-youtuber **MrBeast** to every thumbnail.
+## How It Works
 
-[![Button Download Firefox]][Download Firefox]  
-[![Button Download Chrome]][Download Chrome]  
-[![Button Download Edge]][Download Edge]
+Replace the host of an existing YouTube thumbnail URL with this server.
 
-</div>
+Original:
+
+```text
+https://i.ytimg.com/vi/pDDA7GkV7bk/hq720.jpg?sqp=...&rs=...
+```
+
+Server version:
+
+```text
+http://localhost:3000/vi/pDDA7GkV7bk/hq720.jpg?sqp=...&rs=...
+```
+
+The server downloads the original thumbnail from `https://i.ytimg.com`, composites a random overlay, and streams the result back.
+
+## API
+
+### Direct host replacement
+
+```text
+GET /vi/<VIDEO_ID>/hq720.jpg?sqp=...&rs=...
+```
+
+Optional query parameters handled by this server:
+
+- `appearChance=0.0..1.0`
+- `flipChance=0.0..1.0`
+- `format=jpeg|png|webp`
+
+These control parameters are stripped before the upstream `ytimg.com` request is made.
+
+### Explicit proxy endpoint
+
+```text
+GET /mrbeastify?url=https://i.ytimg.com/vi/<VIDEO_ID>/hq720.jpg?sqp=...&rs=...
+```
+
+This endpoint supports the same optional query parameters.
+
+### Health check
+
+```text
+GET /healthz
+```
+
+## Development
+
+```bash
+npm install
+npm start
+```
+
+The server starts on `http://localhost:3000` by default.
+
+To change the port:
+
+```bash
+PORT=8080 npm start
+```
 
 ## Notes
 
-- This extension should be compatible with any Firefox / Chromium based browser.
-- This extension was inspired by **[Unnecessary Inventions][UI YouTube]** and his **[Website][UI Website]**.
-- This extension is unofficial and not affiliated with MrBeast or YouTube.
-
-## Making your own
-
-Want to customize this extension with a different YouTuber or personality? Here's how:
-
-1. **Fork this repository** and or clone it to your local machine
-2. **Replace the images**: 
-   - Replace the images in the `images/` folder with your own (numbered sequentially: `1.png`, `2.png`, `3.png`, etc. Leave no gaps in the numbering.) You can use websites such as [Photoroom](https://www.photoroom.com/tools/background-remover) to remove the background of your images, and websites like [compresspng](https://compresspng.com/) to compress your images.
-   - Update `icon.png` with your own icon
-3. **Update the manifest**:
-   - Edit `manifest.json` and `manifest v3.json` to change the extension name, version number and description
-4. **Handle text images** (optional):
-   - If any images contain text that shouldn't be flipped, add them to `images/flip_blacklist.json`
-   - Create alternative flipped versions in `images/textFlipped/` if needed
-   - If you have no use for the flip blacklist, you should delete the `flip_blacklist.json` file.
-5. **Test locally**: Load the extension in developer mode in your preferred browser. This is important. Do not upload broken extensions!
-6. **Build the extension**: If you have 7-Zip installed, run `build.bat` to build the extension. This will create a zip file in the root directory of the repository. (The 7-Zip dependency is unfortunately required because Windows' built in Compress-Archive feature is completely busted for some reason). If packing manually, only include `images/`, `manifest.json`, `icon.png`, `settings.html`, `settings.js` and `mrbeastify.js`. When packing for Chrome, use the `manifest v3.json` file, but rename it to `manifest.json`.
-7. **Upload to extension stores**: You can upload your customized version to Chrome Web Store, Firefox Add-ons, etc.
-
-## Microsoft Edge <a id="microsoftedge"></a>
-
-Microsoft Edge support has been ended, and the extension has been delisted. This is because Edge is consistently the slowest at reviewing extensions, constantly rejects my submissions with vague reasons why, and are all-round terrible. Download the Chrome version instead.
-
-[![Button Download Chrome]][Download Chrome]
-
-<!----------------------------------------------------------------------------->
-
-[Button Download Firefox]: https://img.shields.io/badge/Firefox-FF7139?style=for-the-badge&logoColor=white&logo=Firefox
-
-[Button Download Chrome]: https://img.shields.io/badge/Chrome-4285F4?style=for-the-badge&logoColor=white&logo=GoogleChrome
-
-[Button Download Edge]: https://img.shields.io/badge/Edge-0078D7?style=for-the-badge&logoColor=white&logo=MicrosoftEdge&color=grey
-
-[Download Firefox]: http://addons.mozilla.org/en-GB/firefox/addon/youtube-mrbeastify/
-[Download Chrome]: http://chrome.google.com/webstore/detail/youtube-mrbeastify/dbmaeobgdodeimjdjnkipbfhgeldnmeb
-[Download Edge]: #microsoftedge
-
-[UI YouTube]: http://www.youtube.com/@UnnecessaryInventions
-[UI Website]: http://www.mrbeastify.com/
+- Only `http` and `https` thumbnail URLs from `ytimg.com` are accepted by the explicit proxy endpoint.
+- Path-based host replacement always proxies to `https://i.ytimg.com`.
+- Output defaults to the source image format when possible.
+- `images/flip_blacklist.json` and `images/textFlipped/` are still honored.

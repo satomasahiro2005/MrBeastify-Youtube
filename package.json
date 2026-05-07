@@ -1,0 +1,17 @@
+{
+  "name": "mrbeastify-youtube-server",
+  "version": "1.0.0",
+  "description": "Fetch a ytimg.com thumbnail, overlay a random MrBeast asset, and return the transformed image.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "sharp": "^0.34.2"
+  }
+}
