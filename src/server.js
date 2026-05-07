@@ -9,6 +9,7 @@ const {
   renderThumbnailWithOverlay,
 } = require("./thumbnailService");
 const { buildShadowrocketScript } = require("./shadowrocketScript");
+const { buildShadowrocketModule } = require("./shadowrocketModule");
 
 const DEFAULT_APPEAR_CHANCE = 1;
 const DEFAULT_FLIP_CHANCE = 0.25;
@@ -276,6 +277,7 @@ async function main() {
           "/vi/<VIDEO_ID>/hq720.jpg?sqp=...&rs=...  (replace i.ytimg.com with this server)",
         queryProxy: "/mrbeastify?url=https://i.ytimg.com/vi/<VIDEO_ID>/hqdefault.jpg",
         shadowrocketScript: "/ytimg-replace.js",
+        shadowrocketModule: "/ytimg-replace.sgmodule",
         shadowrocketApi: "/__ytimg_replace?url=https://i.ytimg.com/vi/<VIDEO_ID>/hq720.jpg",
       },
       optionalQuery: {
@@ -297,6 +299,12 @@ async function main() {
     response.type("application/javascript");
     response.set("Cache-Control", "no-store");
     response.send(buildShadowrocketScript(getShadowrocketBackendUrl(request)));
+  });
+
+  app.get("/ytimg-replace.sgmodule", (request, response) => {
+    response.type("text/plain; charset=utf-8");
+    response.set("Cache-Control", "no-store");
+    response.send(buildShadowrocketModule(getShadowrocketBackendUrl(request)));
   });
 
   app.get("/__ytimg_replace", async (request, response, next) => {

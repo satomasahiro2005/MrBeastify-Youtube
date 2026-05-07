@@ -7,7 +7,7 @@ This version is no longer a browser extension. It is an HTTP server that:
 - fetches a thumbnail from `ytimg.com`
 - overlays a random MrBeast asset from `images/`
 - returns the transformed image to the caller
-- can also serve a Shadowrocket rewrite script and a base64 JSON API
+- can also serve a Shadowrocket response-replace script, module, and a base64 JSON API
 
 ## How It Works
 
@@ -55,9 +55,13 @@ This endpoint supports the same optional query parameters.
 
 ```text
 GET /ytimg-replace.js
+GET /ytimg-replace.sgmodule
 ```
 
-This serves a ready-to-use Shadowrocket response script that calls:
+`ytimg-replace.js` serves the direct-fetch `http-response` script.
+`ytimg-replace.sgmodule` serves the matching Shadowrocket module with the broad `ytimg` pattern, `requires-body=true`, `binary-body-mode=1`, `max-size=-1`, and `timeout=30`.
+
+The server also exposes the base64 JSON API used by the alternate response flow:
 
 ```text
 GET /__ytimg_replace?url=<original_ytimg_url>
@@ -76,8 +80,8 @@ The JSON response format is:
 }
 ```
 
-By default, the script uses the same origin that served `ytimg-replace.js`.
-If needed, set `SHADOWROCKET_BACKEND_URL` before starting the server to force a different backend URL into the generated script.
+By default, the script and module use the same origin that served them.
+If needed, set `SHADOWROCKET_BACKEND_URL` before starting the server to force a different backend URL into the generated assets.
 
 ### Health check
 

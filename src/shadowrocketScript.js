@@ -9,21 +9,17 @@ function buildShadowrocketScript(backendUrl) {
 
 const originalUrl = $request.url;
 const original = new URL(originalUrl);
-
-// GET /__ytimg_replace?url=<original_url>
-const apiUrl =
-  BACKEND +
-  "/__ytimg_replace?url=" +
-  encodeURIComponent(originalUrl);
+const replacementUrl = BACKEND + original.pathname + original.search;
 
 $httpClient.get(
   {
-    url: apiUrl,
+    url: replacementUrl,
     headers: {
-      Accept: "application/json",
+      Accept: "image/*,*/*;q=0.8",
       "X-Original-URL": originalUrl,
       "X-Original-Path": original.pathname + original.search
-    }
+    },
+    "binary-mode": true
   },
   function (error, response, data) {
     if (error) {
@@ -39,27 +35,26 @@ $httpClient.get(
     }
 
     try {
-      const json = JSON.parse(data);
+      const headers = cloneHeaders(response.headers || {});
+      const bytes = toUint8Array(data);
+      const mime = getHeader(headers, "content-type") || "image/jpeg";
 
-      if (!json.base64) {
-        console.log("[ytimg_replace] missing base64");
-        $done({});
-        return;
-      }
+      deleteHeader(headers, "content-length");
+      deleteHeader(headers, "content-encoding");
+      deleteHeader(headers, "transfer-encoding");
+      deleteHeader(headers, "etag");
 
-      const mime = json.mime || "image/jpeg";
-      const bytes = base64ToUint8Array(json.base64);
+      headers["Content-Type"] = mime;
+      headers["Cache-Control"] = "no-store";
+      headers.Pragma = "no-cache";
+      headers["Access-Control-Allow-Origin"] = "*";
 
       $done({
-        status: 200,
-        headers: {
-          "Content-Type": mime,
-          "Cache-Control": "no-store",
-          Pragma: "no-cache",
-          "Access-Control-Allow-Origin": "*"
-        },
-        body: bytes,
-        bodyBytes: bytes
+        response: {
+          status: response.status || 200,
+          headers,
+          bodyBytes: bytes
+        }
       });
     } catch (e) {
       console.log("[ytimg_replace] parse/decode error: " + e);
@@ -68,38 +63,58 @@ $httpClient.get(
   }
 );
 
-function base64ToUint8Array(base64) {
-  base64 = base64
-    .replace(/^data:[^,]+,/, "")
-    .replace(/\\s/g, "")
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
+function cloneHeaders(headers) {
+  const out = {};
 
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (const key in headers) {
+    out[key] = headers[key];
+  }
 
-  let buffer = 0;
-  let bits = 0;
-  const out = [];
+  return out;
+}
 
-  for (let i = 0; i < base64.length; i++) {
-    const c = base64[i];
+function deleteHeader(headers, name) {
+  const target = String(name).toLowerCase();
 
-    if (c === "=") break;
+  for (const key in headers) {
+    if (String(key).toLowerCase() === target) {
+      delete headers[key];
+    }
+  }
+}
 
-    const value = chars.indexOf(c);
-    if (value === -1) continue;
+function getHeader(headers, name) {
+  const target = String(name).toLowerCase();
 
-    buffer = (buffer << 6) | value;
-    bits += 6;
-
-    if (bits >= 8) {
-      bits -= 8;
-      out.push((buffer >> bits) & 0xff);
+  for (const key in headers) {
+    if (String(key).toLowerCase() === target) {
+      return headers[key];
     }
   }
 
-  return new Uint8Array(out);
+  return null;
+}
+
+function toUint8Array(data) {
+  if (data instanceof Uint8Array) {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return new Uint8Array(data);
+  }
+
+  if (typeof data === "string") {
+    const out = new Uint8Array(data.length);
+
+    for (let i = 0; i < data.length; i++) {
+      out[i] = data.charCodeAt(i) & 0xff;
+    }
+
+    return out;
+  }
+
+  throw new Error("Unsupported response body type: " + typeof data);
 }
 `;
 }
